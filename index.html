@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Generador de Flashcards con Gemini</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    /* Estilos para el efecto 3D de voltear la tarjeta */
+    .perspective { perspective: 1000px; }
+    .transform-style-3d { transform-style: preserve-3d; }
+    .backface-hidden { backface-visibility: hidden; }
+    .rotate-y-180 { transform: rotateY(180deg); }
+  </style>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen p-6 font-sans">
+
+  <div class="max-w-3xl mx-auto space-y-6">
+    <!-- Encabezado -->
+    <header class="text-center">
+      <h1 class="text-3xl font-bold text-indigo-400">Flashcards con Gemini AI</h1>
+      <p class="text-slate-400 text-sm mt-1">Genera tarjetas de estudio dinámicas mediante IA</p>
+    </header>
+
+    <!-- Formulario de Configuración -->
+    <section class="bg-slate-800 p-5 rounded-xl border border-slate-700 space-y-4">
+      <div>
+        <label class="block text-xs font-semibold uppercase text-slate-400 mb-1">API Key de Google Gemini</label>
+        <input type="password" id="apiKey" placeholder="AIzaSy..." class="w-full p-2.5 rounded bg-slate-900 border border-slate-700 text-sm focus:outline-none focus:border-indigo-500">
+      </div>
+      <div>
+        <label class="block text-xs font-semibold uppercase text-slate-400 mb-1">Tema o Apuntes a Estudiar</label>
+        <textarea id="prompt" rows="3" placeholder="Ej: Conceptos clave sobre redes de computadores, protocolos TCP/IP..." class="w-full p-2.5 rounded bg-slate-900 border border-slate-700 text-sm focus:outline-none focus:border-indigo-500"></textarea>
+      </div>
+      <button id="generateBtn" onclick="generateCards()" class="w-full py-3 bg-indigo-600 hover:bg-indigo-500 font-semibold rounded-lg transition-colors flex justify-center items-center gap-2">
+        <span>Generar Flashcards</span>
+      </button>
+    </section>
+
+    <!-- Indicador de Carga -->
+    <div id="loader" class="hidden text-center py-8 text-indigo-400 animate-pulse font-medium">
+      Procesando la información con Gemini...
+    </div>
+
+    <!-- Visor de Tarjetas -->
+    <main id="cardContainer" class="hidden space-y-4">
+      <div class="flex justify-between items-center text-sm text-slate-400">
+        <span id="counter">Tarjeta 1 de X</span>
+        <span>Haz clic para voltear</span>
+      </div>
+
+      <!-- Tarjeta 3D -->
+      <div class="perspective h-64 cursor-pointer" onclick="flipCard()">
+        <div id="cardInner" class="relative w-full h-full transform-style-3d transition-transform duration-500 rounded-2xl shadow-xl">
+          <!-- Frente -->
+          <div class="absolute w-full h-full backface-hidden bg-slate-800 border border-slate-700 rounded-2xl p-6 flex flex-col justify-center items-center text-center">
+            <span class="text-xs font-bold text-indigo-400 uppercase tracking-widest mb-2">Pregunta</span>
+            <p id="cardQuestion" class="text-lg font-medium text-slate-100"></p>
+          </div>
+          <!-- Reverso -->
+          <div class="absolute w-full h-full backface-hidden rotate-y-180 bg-indigo-950 border border-indigo-700 rounded-2xl p-6 flex flex-col justify-center items-center text-center">
+            <span class="text-xs font-bold text-indigo-300 uppercase tracking-widest mb-2">Respuesta</span>
+            <p id="cardAnswer" class="text-md text-indigo-100"></p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Controles de Navegación -->
+      <div class="flex justify-between gap-4 pt-2">
+        <button onclick="prevCard()" class="px-5 py-2.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg text-sm font-medium transition-colors">Anterior</button>
+        <button onclick="nextCard()" class="px-5 py-2.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg text-sm font-medium transition-colors">Siguiente</button>
+      </div>
+    </main>
+  </div>
+
+  <!-- Importación de la librería de Google Gen AI en ESM -->
+  <script type="module">
+    import { GoogleGenAI, Type } from "https://esm.run/@google/genai";
+
+    let cards = [];
+    let currentIndex = 0;
+    let isFlipped = false;
+
+    window.generateCards = async function() {
+      const apiKey = document.getElementById("apiKey").value.trim();
+      const promptText = document.getElementById("prompt").value.trim();
+
+      if (!apiKey || !promptText) {
+        alert("Por favor, ingresa tu API Key y el tema para generar las tarjetas.");
+        return;
+      }
+
+      const loader = document.getElementById("loader");
+      const container = document.getElementById("cardContainer");
+      const btn = document.getElementById("generateBtn");
+
+      loader.classList.remove("hidden");
+      container.classList.add("hidden");
+      btn.disabled = true;
+
+      try {
+        // Inicializar cliente Gemini
+        const ai = new GoogleGenAI({ apiKey });
+
+        // Solicitud a la API forzando respuesta estructurada (JSON)
+        const response = await ai.models.generateContent({
+          model: 'gemini-2.5-flash',
+          contents: `Crea una lista de tarjetas de estudio (flashcards) para repasar el siguiente contenido. Extrae los conceptos más importantes:\n${promptText}`,
+          config: {
+            responseMimeType: "application/json",
+            responseSchema: {
+              type: Type.ARRAY,
+              description: "Lista de tarjetas de estudio con preguntas y respuestas.",
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  pregunta: { type: Type.STRING, description: "Pregunta o concepto clave" },
+                  respuesta: { type: Type.STRING, description: "Respuesta o explicación concisa" }
+                },
+                required: ["pregunta", "respuesta"]
+              }
+            }
+          }
+        });
+
+        cards = JSON.parse(response.text);
+        if (cards.length > 0) {
+          currentIndex = 0;
+          showCard(currentIndex);
+          container.classList.remove("hidden");
+        } else {
+          alert("No se pudieron generar tarjetas con ese contenido.");
+        }
+
+      } catch (error) {
+        console.error("Error al conectar con Gemini:", error);
+        alert("Ocurrió un error al generar las tarjetas. Verifica tu API Key.");
+      } finally {
+        loader.classList.add("hidden");
+        btn.disabled = false;
+      }
+    };
+
+    function showCard(index) {
+      isFlipped = false;
+      document.getElementById("cardInner").classList.remove("rotate-y-180");
+      document.getElementById("cardQuestion").innerText = cards[index].pregunta;
+      document.getElementById("cardAnswer").innerText = cards[index].respuesta;
+      document.getElementById("counter").innerText = `Tarjeta ${index + 1} de ${cards.length}`;
+    }
+
+    window.flipCard = function() {
+      isFlipped = !isFlipped;
+      document.getElementById("cardInner").classList.toggle("rotate-y-180", isFlipped);
+    };
+
+    window.nextCard = function() {
+      if (cards.length === 0) return;
+      currentIndex = (currentIndex + 1) % cards.length;
+      showCard(currentIndex);
+    };
+
+    window.prevCard = function() {
+      if (cards.length === 0) return;
+      currentIndex = (currentIndex - 1 + cards.length) % cards.length;
+      showCard(currentIndex);
+    };
+  </script>
+</body>
+</html>
