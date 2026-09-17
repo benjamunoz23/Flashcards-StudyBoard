@@ -104,7 +104,7 @@
 
         // Solicitud a la API forzando respuesta estructurada (JSON)
         const response = await ai.models.generateContent({
-          model: 'gemini-2.5-flash',
+          model: 'gemini-3.6-flash',
           contents: `Crea una lista de tarjetas de estudio (flashcards) para repasar el siguiente contenido. Extrae los conceptos más importantes:\n${promptText}`,
           config: {
             responseMimeType: "application/json",
